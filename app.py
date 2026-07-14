@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import pandas_ta as ta
 import requests
 import pyotp
 import io
@@ -9,13 +8,15 @@ from datetime import datetime, time
 st.set_page_config(layout="wide", page_title="Algorithmic Quantum Hub")
 
 # ------------------------------------------------------------------
-# 1. CORE STRATEGY ENGINE
+# 1. CORE STRATEGY ENGINE (Uses Native Pandas EMA)
 # ------------------------------------------------------------------
 def execute_5ema_short_strategy(df, asset_type="STOCK"):
     if df.empty:
         return pd.DataFrame()
         
-    df['ema5'] = df.groupby('symbol')['close'].transform(lambda x: ta.ema(x, length=5))
+    # NATIVE PANDAS EMA Calculation (Bypasses pandas-ta cleanly)
+    df['ema5'] = df.groupby('symbol')['close'].transform(lambda x: x.ewm(span=5, adjust=False).mean())
+    
     df['date_str'] = df['datetime'].dt.date
     df['time_str'] = df['datetime'].dt.time
     
@@ -84,7 +85,7 @@ def execute_5ema_short_strategy(df, asset_type="STOCK"):
     return pd.DataFrame(trade_logs) if trade_logs else pd.DataFrame()
 
 # ------------------------------------------------------------------
-# 2. RAW NETWORK DATA FETCHERS (NO BROKEN SDKs)
+# 2. RAW NETWORK DATA FETCHERS
 # ------------------------------------------------------------------
 def fetch_crypto_btc_data(start_date, end_date):
     start_unix = int(pd.to_datetime(start_date).timestamp()) * 1000
@@ -121,7 +122,7 @@ def fetch_fyers_native(symbol, start_d, end_d, access_token, app_id):
         return pd.DataFrame()
 
 # ------------------------------------------------------------------
-# 3. INTERFACE
+# 3. STREAMLIT INTERFACE ROUTER
 # ------------------------------------------------------------------
 st.title("⚡ Infinite Loop Quantitative Strategy Terminal")
 
