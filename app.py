@@ -114,41 +114,60 @@ def execute_setup_three_strategy(df):
     return pd.DataFrame()
 
 # ------------------------------------------------------------------
-# 2. GLOBAL ROUTED NETWORK DATA FETCHERS
+# 2. FAIL-SAFE ROTATING NETWORK CONNECTOR
 # ------------------------------------------------------------------
 def fetch_crypto_btc_data(start_date, end_date):
     """
-    Fetches 5m historical candles using data.binance.com to cleanly bypass
-    US Server IP blocks enforced by standard api.binance.com nodes.
+    Paginates data chunks through a pool of alternative global endpoints
+    to maximize uptime and bypass local cloud architecture restrictions.
     """
     current_start = int(pd.to_datetime(start_date).timestamp()) * 1000
     end_unix = int(pd.to_datetime(end_date).timestamp()) * 1000
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
+    
+    # Pool of official network subdomains to ensure redundancy
+    endpoints_pool = [
+        "https://api-gcp.binance.com",
+        "https://api1.binance.com",
+        "https://api2.binance.com",
+        "https://api3.binance.com",
+        "https://api.binance.com"
+    ]
     
     all_candles = []
     
     while current_start < end_unix:
-        # PIVOT: Swapped backend base endpoint node to data.binance.com to lift geographical server restrictions
-        url = f"https://data.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&startTime={current_start}&endTime={end_unix}&limit=1000"
-        try:
-            res = requests.get(url, headers=headers, timeout=15).json()
-            if not res or not isinstance(res, list) or len(res) == 0:
-                break
+        success_batch = False
+        
+        # Test subdomains sequentially until one responds with valid data
+        for base_url in endpoints_pool:
+            url = f"{base_url}/api/v3/klines?symbol=BTCUSDT&interval=5m&startTime={current_start}&endTime={end_unix}&limit=1000"
+            try:
+                res = requests.get(url, headers=headers, timeout=10)
                 
-            all_candles.extend(res)
-            
-            last_candle_time = res[-1][0]
-            if last_candle_time <= current_start:
-                break
-            current_start = last_candle_time + 1
-            
-            time_lib.sleep(0.1)
-        except Exception as e:
-            st.sidebar.error(f"Data stream disconnect: {str(e)}")
+                # Check for successful response format
+                if res.status_code == 200:
+                    data_json = res.json()
+                    if isinstance(data_json, list) and len(data_json) > 0:
+                        all_candles.extend(data_json)
+                        last_candle_time = data_json[-1][0]
+                        if last_candle_time <= current_start:
+                            current_start = end_unix # Break out completely
+                        else:
+                            current_start = last_candle_time + 1
+                        success_batch = True
+                        break # Successfully pulled this batch, exit subdomain loop
+            except Exception:
+                continue # Try the next available endpoint node
+                
+        if not success_batch:
+            # If all subdomains return failures or are locked out, break out gracefully
             break
+            
+        time_lib.sleep(0.1)
 
     if len(all_candles) == 0:
         return pd.DataFrame()
@@ -183,7 +202,7 @@ def fetch_fyers_native(symbol, start_d, end_d, access_token, app_id):
         return pd.DataFrame()
 
 # ------------------------------------------------------------------
-# 3. INTERACTIVE DASHBOARD GRAPHICS
+# 3. INTERACTIVE DASHBOARD
 # ------------------------------------------------------------------
 st.title("⚡ Multi-Setup Quantitative Strategy Hub")
 st.markdown("Automated zero-friction backtesting engine for Equities and Cryptocurrencies.")
