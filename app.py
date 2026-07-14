@@ -114,12 +114,12 @@ def execute_setup_three_strategy(df):
     return pd.DataFrame()
 
 # ------------------------------------------------------------------
-# 2. ADVANCED PAGINATED NETWORK DATA FETCHERS
+# 2. GLOBAL ROUTED NETWORK DATA FETCHERS
 # ------------------------------------------------------------------
 def fetch_crypto_btc_data(start_date, end_date):
     """
-    Fetches historical 5m data using chronological chunks to handle large date ranges
-    and implements browser headers to bypass ISP blocks.
+    Fetches 5m historical candles using data.binance.com to cleanly bypass
+    US Server IP blocks enforced by standard api.binance.com nodes.
     """
     current_start = int(pd.to_datetime(start_date).timestamp()) * 1000
     end_unix = int(pd.to_datetime(end_date).timestamp()) * 1000
@@ -130,9 +130,9 @@ def fetch_crypto_btc_data(start_date, end_date):
     
     all_candles = []
     
-    # Chunk loop to seamlessly fetch data beyond the 1,000 candle limit
     while current_start < end_unix:
-        url = f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&startTime={current_start}&endTime={end_unix}&limit=1000"
+        # PIVOT: Swapped backend base endpoint node to data.binance.com to lift geographical server restrictions
+        url = f"https://data.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&startTime={current_start}&endTime={end_unix}&limit=1000"
         try:
             res = requests.get(url, headers=headers, timeout=15).json()
             if not res or not isinstance(res, list) or len(res) == 0:
@@ -140,16 +140,14 @@ def fetch_crypto_btc_data(start_date, end_date):
                 
             all_candles.extend(res)
             
-            # Shift token timestamp to the close time of the last candle received to grab next page
             last_candle_time = res[-1][0]
             if last_candle_time <= current_start:
                 break
             current_start = last_candle_time + 1
             
-            # Rate limiting safety check
             time_lib.sleep(0.1)
         except Exception as e:
-            st.sidebar.error(f"Network error on batch slice: {str(e)}")
+            st.sidebar.error(f"Data stream disconnect: {str(e)}")
             break
 
     if len(all_candles) == 0:
@@ -185,7 +183,7 @@ def fetch_fyers_native(symbol, start_d, end_d, access_token, app_id):
         return pd.DataFrame()
 
 # ------------------------------------------------------------------
-# 3. INTERACTIVE WEB DASHBOARD
+# 3. INTERACTIVE DASHBOARD GRAPHICS
 # ------------------------------------------------------------------
 st.title("⚡ Multi-Setup Quantitative Strategy Hub")
 st.markdown("Automated zero-friction backtesting engine for Equities and Cryptocurrencies.")
