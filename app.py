@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import requests
 import io
-import time as time_lib
 from datetime import datetime, time
 
 st.set_page_config(layout="wide", page_title="Algorithmic Strategy Hub")
@@ -38,7 +37,7 @@ def execute_5ema_short_strategy(df, asset_type="STOCK"):
             curr_time_parsed = datetime.strptime(curr_time_str, '%H:%M:%S').time()
             
             if asset_type == "STOCK" and curr_time_parsed >= time(15, 0):
-                if sym in open_positions:
+                if sym open_positions:
                     p = open_positions[sym]
                     p['exit_time'] = curr_time_str
                     p['exit_price'] = row['close']
@@ -48,7 +47,7 @@ def execute_5ema_short_strategy(df, asset_type="STOCK"):
                     del open_positions[sym]
                 continue
                 
-            if sym in open_positions:
+            if sym open_positions:
                 p = open_positions[sym]
                 if row['high'] >= p['sl_price']:
                     p['exit_time'] = curr_time_str
@@ -114,73 +113,47 @@ def execute_setup_three_strategy(df):
     return pd.DataFrame()
 
 # ------------------------------------------------------------------
-# 2. FAIL-SAFE ROTATING NETWORK CONNECTOR
+# 2. BULLETPROOF NETWORK DATA FETCHERS (NO GEO-BLOCKS)
 # ------------------------------------------------------------------
 def fetch_crypto_btc_data(start_date, end_date):
     """
-    Paginates data chunks through a pool of alternative global endpoints
-    to maximize uptime and bypass local cloud architecture restrictions.
+    Fetches historical 5-minute data directly via Yahoo Finance APIs.
+    Bypasses geo-blocking rules targeting traditional server infrastructures.
     """
-    current_start = int(pd.to_datetime(start_date).timestamp()) * 1000
-    end_unix = int(pd.to_datetime(end_date).timestamp()) * 1000
+    start_unix = int(pd.to_datetime(start_date).timestamp())
+    end_unix = int(pd.to_datetime(end_date).timestamp())
     
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD?period1={start_unix}&period2={end_unix}&interval=5m"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
     
-    # Pool of official network subdomains to ensure redundancy
-    endpoints_pool = [
-        "https://api-gcp.binance.com",
-        "https://api1.binance.com",
-        "https://api2.binance.com",
-        "https://api3.binance.com",
-        "https://api.binance.com"
-    ]
-    
-    all_candles = []
-    
-    while current_start < end_unix:
-        success_batch = False
+    try:
+        res = requests.get(url, headers=headers, timeout=15).json()
+        result_node = res['chart']['result'][0]
+        timestamps = result_node['timestamp']
+        ohlc = result_node['indicators']['quote'][0]
         
-        # Test subdomains sequentially until one responds with valid data
-        for base_url in endpoints_pool:
-            url = f"{base_url}/api/v3/klines?symbol=BTCUSDT&interval=5m&startTime={current_start}&endTime={end_unix}&limit=1000"
-            try:
-                res = requests.get(url, headers=headers, timeout=10)
-                
-                # Check for successful response format
-                if res.status_code == 200:
-                    data_json = res.json()
-                    if isinstance(data_json, list) and len(data_json) > 0:
-                        all_candles.extend(data_json)
-                        last_candle_time = data_json[-1][0]
-                        if last_candle_time <= current_start:
-                            current_start = end_unix # Break out completely
-                        else:
-                            current_start = last_candle_time + 1
-                        success_batch = True
-                        break # Successfully pulled this batch, exit subdomain loop
-            except Exception:
-                continue # Try the next available endpoint node
-                
-        if not success_batch:
-            # If all subdomains return failures or are locked out, break out gracefully
-            break
-            
-        time_lib.sleep(0.1)
-
-    if len(all_candles) == 0:
+        df = pd.DataFrame({
+            'time': timestamps,
+            'open': ohlc['open'],
+            'high': ohlc['high'],
+            'low': ohlc['low'],
+            'close': ohlc['close']
+        })
+        
+        # Clean null entries out of the retrieved dataset
+        df = df.dropna().copy()
+        
+        # Shift timestamps natively to Indian Standard Time (IST)
+        df['datetime_utc'] = pd.to_datetime(df['time'], unit='s', utc=True)
+        df['datetime_ist'] = df['datetime_utc'].dt.tz_convert('Asia/Kolkata')
+        df['symbol'] = "BTCUSD"
+        
+        return df[['datetime_ist', 'symbol', 'open', 'high', 'low', 'close']]
+    except Exception as e:
+        st.sidebar.error(f"Sourcing channel disconnect: {str(e)}")
         return pd.DataFrame()
-        
-    df = pd.DataFrame(all_candles, columns=['time', 'open', 'high', 'low', 'close', 'v', 'c_time', 'q', 'n', 't', 'b', 'i'])
-    df['datetime_utc'] = pd.to_datetime(df['time'], unit='ms', utc=True)
-    df['datetime_ist'] = df['datetime_utc'].dt.tz_convert('Asia/Kolkata')
-    
-    df['symbol'] = "BTCUSD"
-    for col in ['open', 'high', 'low', 'close']:
-        df[col] = df[col].astype(float)
-        
-    return df[['datetime_ist', 'symbol', 'open', 'high', 'low', 'close']].drop_duplicates(subset=['datetime_ist'])
 
 def fetch_fyers_native(symbol, start_d, end_d, access_token, app_id):
     url = "https://api-t1.fyers.in/data/history"
@@ -202,7 +175,7 @@ def fetch_fyers_native(symbol, start_d, end_d, access_token, app_id):
         return pd.DataFrame()
 
 # ------------------------------------------------------------------
-# 3. INTERACTIVE DASHBOARD
+# 3. INTERACTIVE DASHBOARD GRAPHICS
 # ------------------------------------------------------------------
 st.title("⚡ Multi-Setup Quantitative Strategy Hub")
 st.markdown("Automated zero-friction backtesting engine for Equities and Cryptocurrencies.")
