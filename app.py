@@ -37,7 +37,7 @@ def execute_5ema_short_strategy(df, asset_type="STOCK"):
             curr_time_parsed = datetime.strptime(curr_time_str, '%H:%M:%S').time()
             
             if asset_type == "STOCK" and curr_time_parsed >= time(15, 0):
-                if sym open_positions:
+                if sym in open_positions:  # FIXED: Restored 'in' keyword
                     p = open_positions[sym]
                     p['exit_time'] = curr_time_str
                     p['exit_price'] = row['close']
@@ -47,7 +47,7 @@ def execute_5ema_short_strategy(df, asset_type="STOCK"):
                     del open_positions[sym]
                 continue
                 
-            if sym open_positions:
+            if sym in open_positions:  # FIXED: Restored 'in' keyword
                 p = open_positions[sym]
                 if row['high'] >= p['sl_price']:
                     p['exit_time'] = curr_time_str
@@ -142,10 +142,8 @@ def fetch_crypto_btc_data(start_date, end_date):
             'close': ohlc['close']
         })
         
-        # Clean null entries out of the retrieved dataset
         df = df.dropna().copy()
         
-        # Shift timestamps natively to Indian Standard Time (IST)
         df['datetime_utc'] = pd.to_datetime(df['time'], unit='s', utc=True)
         df['datetime_ist'] = df['datetime_utc'].dt.tz_convert('Asia/Kolkata')
         df['symbol'] = "BTCUSD"
@@ -222,7 +220,7 @@ if st.button("🚀 Fire Algorithmic Backtest Loop"):
                     master_dataset = pd.concat(all_dfs, ignore_index=True)
 
     if not master_dataset.empty:
-        st.success(f"Successfully loaded {len(master_dataset)} chronological data candles!")
+        st.success(f"Successfully loaded {len(master_dataset)} data candles!")
         
         if strategy_choice == "Setup 1: 5EMA Short Setup Engine":
             asset_env = "STOCK" if market_mode == "Indian Stocks (Fyers API)" else "CRYPTO"
